@@ -348,6 +348,12 @@ def main():
     # legacy lovemun/SEXCMD R-compatible output file
     out_path = args.out if args.out else args.fastq[0] + ".OUTPUT"
 
+    # Auto-create parent directory so a long pipeline doesn't die at the final
+    # write step. No-op if parent already exists or path has no directory part.
+    out_dir = os.path.dirname(out_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+
     counts = run_pipeline(
         marker_fasta=args.marker,
         fastqs=args.fastq,
