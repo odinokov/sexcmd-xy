@@ -176,7 +176,8 @@ def classify_xy(x_markers, y_markers, counts):
 
 def write_r_compatible_output(path, x_markers, y_markers, counts, ratio, label,
                               fastq_display):
-    # chrY counts paired by row index: positional pairing inherited from R's cbind-by-index.
+    # chrY counts paired by row index: positional pairing
+    # inherited from R's cbind-by-index.
     with open(path, "w") as out:
         out.write("\tLength\tXcount\tYcount\n")
         for i, (xname, xlen) in enumerate(x_markers):
