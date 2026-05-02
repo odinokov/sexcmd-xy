@@ -41,6 +41,14 @@ wget -O sex_marker.hg38.filtered.final.fasta \
     --fastq sample_R1.fq.gz \
     --seq-type wgs \
     --threads 16
+
+# Multi-lane: pass all lanes together, reads are pooled up to --max-reads
+./sexcmd_xy.py \
+    --marker sex_marker.hg38.filtered.final.fasta \
+    --fastq lane1_R1.fq.gz lane2_R1.fq.gz lane3_R1.fq.gz lane4_R1.fq.gz \
+    --seq-type wgs \
+    --threads 16 \
+    --out sample_id.OUTPUT
 ```
 
 `--seq-type` sets the read-sampling budget: `wes`=1M, `rna`=5M, `wgs`=150M. Override with `--max-reads`. See `./sexcmd_xy.py --help` for all options.
