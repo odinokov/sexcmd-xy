@@ -1,0 +1,7 @@
+# No PyPI dependencies — all imports are Python stdlib.
+#
+# External binaries required (install via conda or system package manager):
+#   bwa        conda install -c bioconda bwa
+#   sambamba   conda install -c bioconda sambamba
+#   pigz       conda install -c conda-forge pigz  |  apt install pigz
+#   bash, awk, head  (standard on any Linux/macOS system)

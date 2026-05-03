@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Human XY sex inference from FASTQ using SEXCMD markers."""
 import argparse
+import itertools
 import math
 import os
 import shlex
@@ -38,24 +39,26 @@ def ensure_file(path):
         die(f"File not found: {path}")
 
 
-def parse_fasta_in_order(fasta_path):
-    records = []
-    name = None
-    length = 0
-    with open(fasta_path) as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith(">"):
-                if name is not None:
-                    records.append((name, length))
-                name = line[1:].split()[0]
-                length = 0
-            else:
-                length += len(line)
+def _consume_fasta_group(is_header, group, name):
+    if is_header:
+        return next(group)[1:].split()[0], None
     if name is not None:
-        records.append((name, length))
+        return name, (name, sum(len(s) for s in group))
+    return name, None
+
+
+def _iter_fasta_records(fasta_path):
+    with open(fasta_path) as fh:
+        non_empty = (ln.strip() for ln in fh if ln.strip())
+        name = None
+        for is_header, group in itertools.groupby(non_empty, key=lambda ln: ln.startswith(">")):
+            name, record = _consume_fasta_group(is_header, group, name)
+            if record is not None:
+                yield record
+
+
+def parse_fasta_in_order(fasta_path):
+    records = list(_iter_fasta_records(fasta_path))
     if not records:
         die(f"No FASTA records found in {fasta_path}")
     return records
@@ -192,7 +195,7 @@ def write_r_compatible_output(path, x_markers, y_markers, counts, ratio, label,
         )
 
 
-def main():
+def _parse_args():
     ap = argparse.ArgumentParser(
         description="Human XY sex inference from FASTQ using SEXCMD marker "
                     "FASTA. Port of SEXCMD.R, XY+human only.",
@@ -224,8 +227,10 @@ def main():
     ap.add_argument("--out", default=None,
                     help="Output path. Default: <first-fastq>.OUTPUT "
                          "(matches legacy R).")
-    args = ap.parse_args()
+    return ap.parse_args()
 
+
+def _validate_env(args):
     if args.threads < 1:
         die("--threads must be >= 1")
 
@@ -240,8 +245,6 @@ def main():
     for fq in args.fastq:
         ensure_file(fq)
 
-    max_reads = (args.max_reads if args.max_reads is not None
-                 else SEQ_TYPE_MAX_READS[args.seq_type])
     if args.seq_type == "rna":
         print(
             "WARNING: RNA-Seq sex inference via marker mapping is noisy. "
@@ -251,23 +254,34 @@ def main():
             file=sys.stderr,
         )
 
+
+def _resolve_run_params(args):
+    max_reads = (args.max_reads if args.max_reads is not None
+                 else SEQ_TYPE_MAX_READS[args.seq_type])
     decomp_t, bwa_t, sam_t = split_threads(args.threads)
     log(f"threads total={args.threads} -> pigz={decomp_t} "
         f"bwa={bwa_t} sambamba={sam_t}")
     log(f"seq_type={args.seq_type} max_reads={max_reads} "
         f"trim_len={TRIM_LEN} mapq={args.mapq}")
 
+    # legacy lovemun/SEXCMD R-compatible output file
+    out_path = args.out if args.out else args.fastq[0] + ".OUTPUT"
+    out_dir = os.path.dirname(out_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+
+    return max_reads, decomp_t, bwa_t, sam_t, out_path
+
+
+def main():
+    args = _parse_args()
+    _validate_env(args)
+    max_reads, decomp_t, bwa_t, sam_t, out_path = _resolve_run_params(args)
+
     # Parse markers before the pipeline so a bad FASTA fails fast.
     ensure_bwa_index(args.marker)
     marker_records = parse_fasta_in_order(args.marker)
     x_markers, y_markers = split_xy_markers(marker_records)
-
-    # legacy lovemun/SEXCMD R-compatible output file
-    out_path = args.out if args.out else args.fastq[0] + ".OUTPUT"
-
-    out_dir = os.path.dirname(out_path)
-    if out_dir:
-        os.makedirs(out_dir, exist_ok=True)
 
     counts = run_pipeline(
         marker_fasta=args.marker,
