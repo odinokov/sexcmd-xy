@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Human XY sex inference from FASTQ using SEXCMD markers."""
 import argparse
-import itertools
 import math
 import os
 import shlex
@@ -39,22 +38,25 @@ def ensure_file(path):
         die(f"File not found: {path}")
 
 
-def _consume_fasta_group(is_header, group, name):
-    if is_header:
-        return next(group)[1:].split()[0], None
-    if name is not None:
-        return name, (name, sum(len(s) for s in group))
-    return name, None
+def _nonempty_lines(fasta_path):
+    with open(fasta_path) as fh:
+        for line in fh:
+            line = line.strip()
+            if line:
+                yield line
 
 
 def _iter_fasta_records(fasta_path):
-    with open(fasta_path) as fh:
-        non_empty = (ln.strip() for ln in fh if ln.strip())
-        name = None
-        for is_header, group in itertools.groupby(non_empty, key=lambda ln: ln.startswith(">")):
-            name, record = _consume_fasta_group(is_header, group, name)
-            if record is not None:
-                yield record
+    name, length = None, 0
+    for line in _nonempty_lines(fasta_path):
+        if line.startswith(">"):
+            if name is not None:
+                yield name, length
+            name, length = line[1:].split()[0], 0
+        else:
+            length += len(line)
+    if name is not None:
+        yield name, length
 
 
 def parse_fasta_in_order(fasta_path):
@@ -157,8 +159,8 @@ def run_pipeline(marker_fasta, fastqs, max_reads, trim_len, mapq,
 
 
 def split_xy_markers(marker_records):
-    x_markers = [(n, L) for n, L in marker_records if n.startswith("chrX")]
-    y_markers = [(n, L) for n, L in marker_records if n.startswith("chrY")]
+    x_markers = [r for r in marker_records if r[0].startswith("chrX")]
+    y_markers = [r for r in marker_records if r[0].startswith("chrY")]
     if not x_markers or not y_markers:
         die("Marker FASTA must contain both chrX* and chrY* records")
     return x_markers, y_markers
